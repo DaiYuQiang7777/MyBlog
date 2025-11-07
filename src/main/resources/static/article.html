@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文章详情 - MyBlog</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">MyBlog</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">首页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/articles">文章</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/categories">分类</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item" id="userMenu" style="display: none;">
+                        <a class="nav-link" href="/profile">个人中心</a>
+                    </li>
+                    <li class="nav-item" id="loginLink">
+                        <a class="nav-link" href="/login">登录</a>
+                    </li>
+                    <li class="nav-item" id="registerLink">
+                        <a class="nav-link" href="/register">注册</a>
+                    </li>
+                    <li class="nav-item" id="logoutLink" style="display: none;">
+                        <a class="nav-link" href="#" onclick="logout()">退出</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div id="articleDetail">
+            <div v-if="loading" class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+            </div>
+            
+            <article v-else>
+                <header class="mb-4">
+                    <h1>{{ article.title }}</h1>
+                    <div class="text-muted mb-3">
+                        <small>
+                            作者: <a href="#" @click.prevent="viewAuthor(article.authorId)">{{ article.authorId }}</a> | 
+                            发布时间: {{ formatDate(article.publishedAt) }} | 
+                            分类: <a href="#" @click.prevent="viewCategory(article.categoryId)">{{ categoryName }}</a> | 
+                            浏览: {{ article.viewCount || 0 }} | 
+                            评论: {{ article.commentCount || 0 }}
+                        </small>
+                    </div>
+                </header>
+                
+                <div class="article-content mb-4">
+                    <div v-html="article.content"></div>
+                </div>
+                
+                <footer class="article-footer">
+                    <div class="tags mb-3">
+                        <span class="badge bg-secondary me-1" v-for="tag in tags" :key="tag.id">{{ tag.name }}</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2">
+                                <i class="bi bi-hand-thumbs-up"></i> 点赞 ({{ article.likesCount || 0 }})
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-share"></i> 分享
+                            </button>
+                        </div>
+                        
+                        <div v-if="isAuthor">
+                            <button class="btn btn-sm btn-outline-warning me-2" @click="editArticle">编辑</button>
+                            <button class="btn btn-sm btn-outline-danger" @click="deleteArticle">删除</button>
+                        </div>
+                    </div>
+                </footer>
+            </article>
+            
+            <!-- 评论区域 -->
+            <section class="comments-section mt-5">
+                <h3>评论 ({{ comments.length }})</h3>
+                
+                <div v-if="isLoggedIn()" class="card mb-4">
+                    <div class="card-body">
+                        <textarea v-model="newComment.content" class="form-control mb-2" rows="3" placeholder="发表您的评论..."></textarea>
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <input v-if="isLoggedIn()" type="checkbox" v-model="newComment.isReply" class="form-check-input me-1">
+                                <small v-if="isLoggedIn()" class="form-text text-muted">回复模式</small>
+                                <small v-else class="form-text text-muted">请先 <a href="/login">登录</a> 再发表评论</small>
+                            </div>
+                            <button @click="submitComment" :disabled="!newComment.content.trim()" class="btn btn-primary btn-sm">发布评论</button>
+                        </div>
+                    </div>
+                </div>
+                <div v-else class="alert alert-info">
+                    请 <a href="/login">登录</a> 后发表评论
+                </div>
+                
+                <div class="comments-list">
+                    <div v-for="comment in comments" :key="comment.id" class="comment border-start ps-3 mb-3">
+                        <div class="comment-header d-flex justify-content-between">
+                            <strong>{{ comment.authorId }}</strong>
+                            <small class="text-muted">{{ formatDate(comment.createdAt) }}</small>
+                        </div>
+                        <div class="comment-content mt-1">
+                            {{ comment.content }}
+                        </div>
+                        <div class="comment-actions mt-2">
+                            <button @click="replyToComment(comment)" class="btn btn-sm btn-outline-secondary">回复</button>
+                        </div>
+                        
+                        <!-- 回复评论 -->
+                        <div v-if="comment.replies && comment.replies.length > 0" class="replies mt-2">
+                            <div v-for="reply in comment.replies" :key="reply.id" class="comment border-start ps-3 mb-2">
+                                <div class="comment-header d-flex justify-content-between">
+                                    <strong>{{ reply.authorId }}</strong>
+                                    <small class="text-muted">{{ formatDate(reply.createdAt) }}</small>
+                                </div>
+                                <div class="comment-content mt-1">
+                                    <span class="text-primary">@{{ reply.parentAuthor }}</span> {{ reply.content }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <footer class="footer mt-5 py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">© 2025 MyBlog. All rights reserved.</span>
+        </div>
+    </footer>
+
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Axios for HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- App JavaScript -->
+    <script src="/js/app.js"></script>
+    <script>
+        const { createApp, ref, onMounted, computed } = Vue;
+
+        const articleApp = createApp({
+            setup() {
+                const article = ref({});
+                const comments = ref([]);
+                const tags = ref([]);
+                const loading = ref(true);
+                const categoryName = ref('');
+                const newComment = ref({
+                    content: '',
+                    isReply: false,
+                    parentCommentId: null
+                });
+                
+                // 获取URL参数中的文章ID
+                const getArticleId = () => {
+                    const path = window.location.pathname;
+                    const parts = path.split('/');
+                    return parts[parts.length - 1];
+                };
+
+                const loadArticle = async () => {
+                    try {
+                        const articleId = getArticleId();
+                        const response = await axios.get(`/api/articles/${articleId}`);
+                        article.value = response.data;
+                        
+                        // 更新浏览次数（通过调用API）
+                        if (response.data) {
+                            // 浏览次数已经在后端更新
+                        }
+                    } catch (error) {
+                        console.error('获取文章失败:', error);
+                    }
+                };
+
+                const loadComments = async () => {
+                    try {
+                        const articleId = getArticleId();
+                        const response = await axios.get(`/api/comments/article/${articleId}`);
+                        comments.value = response.data;
+                    } catch (error) {
+                        console.error('获取评论失败:', error);
+                    }
+                };
+
+                const loadTags = async () => {
+                    try {
+                        // 这里应该获取文章关联的标签，暂时返回空数组
+                        tags.value = [];
+                    } catch (error) {
+                        console.error('获取标签失败:', error);
+                    }
+                };
+
+                const submitComment = async () => {
+                    if (!newComment.value.content.trim()) return;
+                    
+                    try {
+                        const commentData = {
+                            articleId: parseInt(getArticleId()),
+                            content: newComment.value.content,
+                            parentId: newComment.value.parentCommentId || null
+                        };
+                        
+                        const response = await axios.post('/api/comments', commentData, {
+                            headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        // 添加新评论到列表
+                        comments.value.unshift(response.data);
+                        
+                        // 清空评论框
+                        newComment.value.content = '';
+                        newComment.value.isReply = false;
+                        newComment.value.parentCommentId = null;
+                    } catch (error) {
+                        console.error('提交评论失败:', error);
+                        alert('提交评论失败: ' + (error.response?.data?.message || '未知错误'));
+                    }
+                };
+
+                const replyToComment = (comment) => {
+                    newComment.value.parentCommentId = comment.id;
+                    newComment.value.isReply = true;
+                    // 将焦点放到评论框
+                    document.querySelector('textarea').focus();
+                };
+
+                const isLoggedIn = () => {
+                    return !!localStorage.getItem('authToken');
+                };
+
+                const isAuthor = computed(() => {
+                    const currentUserId = JSON.parse(localStorage.getItem('currentUser') || '{}').id;
+                    return currentUserId && currentUserId === article.value.authorId;
+                });
+
+                const formatDate = (dateString) => {
+                    if (!dateString) return '';
+                    const date = new Date(dateString);
+                    return date.toLocaleDateString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                };
+
+                const editArticle = () => {
+                    alert('编辑功能待实现');
+                };
+
+                const deleteArticle = async () => {
+                    if (confirm('确定要删除这篇文章吗？')) {
+                        try {
+                            await axios.delete(`/api/articles/${article.value.id}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                                }
+                            });
+                            alert('文章已删除');
+                            window.location.href = '/';
+                        } catch (error) {
+                            console.error('删除文章失败:', error);
+                            alert('删除文章失败: ' + (error.response?.data?.message || '未知错误'));
+                        }
+                    }
+                };
+
+                const viewAuthor = (authorId) => {
+                    alert('查看作者功能待实现: ' + authorId);
+                };
+
+                const viewCategory = (categoryId) => {
+                    alert('查看分类功能待实现: ' + categoryId);
+                };
+
+                onMounted(async () => {
+                    await Promise.all([
+                        loadArticle(),
+                        loadComments(),
+                        loadTags()
+                    ]);
+                    loading.value = false;
+                    
+                    // 检查认证状态
+                    checkAuthStatus();
+                });
+
+                return {
+                    article,
+                    comments,
+                    tags,
+                    loading,
+                    categoryName,
+                    newComment,
+                    submitComment,
+                    replyToComment,
+                    isLoggedIn,
+                    isAuthor,
+                    formatDate,
+                    editArticle,
+                    deleteArticle,
+                    viewAuthor,
+                    viewCategory
+                };
+            }
+        });
+
+        articleApp.mount('#articleDetail');
+    </script>
+</body>
+</html>
